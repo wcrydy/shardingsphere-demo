@@ -1,0 +1,132 @@
+mode:
+  type: Standalone
+  repository:
+    # 使用jdbc连接数据库
+    type: JDBC
+# sharding的数据源配置
+dataSources:
+  # 写数据源配置： 主库配置
+  write_ds_0:
+    # 当前数据源连接池类型
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    # mysql连接参数
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://192.168.200.25:10080/db_user
+    username: root
+    password: root
+  # 读数据源配置
+  read_ds_0:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://192.168.200.25:10080/db_user
+    username: root
+    password: root
+  read_ds_1:
+    # 当前数据源连接池类型
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    # mysql连接参数
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://192.168.200.25:10090/db_user
+    username: root
+    password: root
+  # 订单库数据源配置
+  order_ds_0:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://192.168.200.25:10081/db_order
+    username: root
+    password: root
+  # order_ds 和order_ds_1 两个数据源 都创建了db_order库 库中都准备了t_order0~1 两张表
+  # 一共四张表 用来分库分表存储订单数据
+  order_ds_1:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://192.168.200.25:10082/db_order
+    username: root
+    password: root
+# 规则配置： 读写分离、分库、分表
+rules:
+  # 读写分离配置规则
+  - !READWRITE_SPLITTING
+    dataSources:
+      # 读写数据源配置
+      readwrite_ds:
+        # 写数据源配置，使用上面dataSources定义的数据源名称
+        writeDataSourceName: write_ds_0
+        # 读数据源配置，使用上面dataSources定义的数据源名称
+        readDataSourceNames:
+          - read_ds_1
+          - read_ds_0
+        transactionalReadQueryStrategy: PRIMARY # 事务内读请求的路由策略，可选值：PRIMARY（路由至主库）、FIXED（同一事务内路由至固定数据源）、DYNAMIC（同一事务内路由至非固定数据源）。默认值：DYNAMIC
+        # 负载均衡策略：使用的是loadBalancers下定义的负载均衡策略
+        loadBalancerName: round_robin
+    # 定义读的负载均衡策略
+    loadBalancers:
+      # 随机
+      random2:
+        type: RANDOM
+      # 轮询策略
+      round_robin:
+        type: ROUND_ROBIN
+      # 加权轮询
+      weight:
+        type: WEIGHT
+        props:
+          read_ds_1: 2
+          read_ds_0: 1
+  # 垂直分片配置(分库：项目可以从多个不同的数据库中加载到不同的表在一个项目中使用)
+  - !SHARDING
+    tables:
+      # 表示代码中生成的sql要操作的数据库表名
+      t_user:
+        # 表示t_user实际要到sharding上面定义的哪个数据源中查找该表
+        actualDataNodes: readwrite_ds.t_user
+      # 表示代码中生成的sql要操作的t_order表到order_ds数据源连接的数据库中 查找t_order表
+      #      t_order:
+      #        actualDataNodes: order_ds.t_order
+      t_order:
+        # inline写法
+        # 实际要访问的数据库表，一定要保证 数据源连接的数据库中存在对应的表
+        actualDataNodes: order_ds_${0..1}.t_order${0..1}
+        #  t_order表的查询的分库策略：基于user_id判断查找哪个库
+        databaseStrategy:
+          standard:
+            # 分库列字段
+            shardingColumn: user_id
+            # 选择使用的分库算法： 配置shardingAlgorithms指定的算法
+            shardingAlgorithmName: userid_inline
+        # t_order表查询的 分表策略：判断在上面的库中查找哪张表
+        tableStrategy:
+          standard:
+            shardingColumn: id
+            shardingAlgorithmName: orderid_inline
+      t_order_item:
+        actualDataNodes: order_ds_${0..1}.t_order_item${0..1}
+        databaseStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: userid_inline
+        tableStrategy:
+          standard:
+            # 虽然order_item分表策略和order表一样，但是使用的字段名不一样
+            shardingColumn: order_id
+            shardingAlgorithmName: orderid_item_inline
+    # 分库算法：
+    shardingAlgorithms:
+      userid_inline:
+        type: INLINE
+        props:
+          # 使用user_id对2取余 计算的结果和 order_ds_拼接出一个库名(order_ds_0 , order_ds_1)
+          algorithm-expression: order_ds_${user_id % 2}
+      orderid_inline:
+        type: INLINE
+        props:
+          # 使用id对2取余 计算的结果和 t_order拼接出一个表名(t_order0 , t_order1)
+          algorithm-expression: t_order${id % 2}
+      orderid_item_inline:
+        type: INLINE
+        props:
+          algorithm-expression: t_order_item${order_id % 2}
+# 打印sharding的sql语句
+props:
+  sql-show: true

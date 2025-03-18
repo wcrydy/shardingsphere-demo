@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qlan.shardingspheredemo.mapper.OrderMapper">
+    <resultMap id="selectOrdersAndOrderItemsResultMap" autoMapping="true" type="com.qlan.shardingspheredemo.pojo.Order">
+        <id property="id" column="id"></id>
+        <collection property="orderItemList"
+                    ofType="com.qlan.shardingspheredemo.pojo.OrderItem">
+            <id property="id" column="order_item_id"></id>
+            <result column="price" property="price"></result>
+            <result column="order_id" property="orderId"></result>
+            <result column="count" property="count"></result>
+        </collection>
+    </resultMap>
+<!-- 自定义sql的表名需要和sharding定义的逻辑表名一样 -->
+    <select id="selectOrdersAndOrderItems" resultMap="selectOrdersAndOrderItemsResultMap">
+        SELECT t1.id,t1.order_no,t1.user_id ,  t2.id order_item_id ,t2.`order_id` ,t2.`price` , t2.`count`
+        FROM t_order t1
+        LEFT JOIN t_order_item t2
+        ON t1.`id` = t2.`order_id`
+    </select>
+</mapper>

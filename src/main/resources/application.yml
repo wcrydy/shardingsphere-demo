@@ -1,0 +1,6 @@
+spring:
+  datasource:
+    # 表示使用sharding驱动类连接数据库
+    driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
+    # 配置使用shardinng的配置文件加载数据库连接
+    url: jdbc:shardingsphere:classpath:shardingsphere.yaml
